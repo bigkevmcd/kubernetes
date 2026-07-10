@@ -25,6 +25,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
@@ -390,8 +391,15 @@ var _ = SIGDescribe("Secrets", func() {
 		currentSecret, err := f.ClientSet.CoreV1().Secrets(f.Namespace.Name).Create(ctx, secret, metav1.CreateOptions{})
 		framework.ExpectNoError(err, "Failed to create secret %q in namespace %q", secret.Name, secret.Namespace)
 
-		currentSecret.Data["data-4"] = []byte("value-4\n")
-		currentSecret, err = f.ClientSet.CoreV1().Secrets(f.Namespace.Name).Update(ctx, currentSecret, metav1.UpdateOptions{})
+		err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			currentSecret, err = f.ClientSet.CoreV1().Secrets(f.Namespace.Name).Get(ctx, name, metav1.GetOptions{})
+			framework.ExpectNoError(err, "Failed to get secret %q in namespace %q", secret.Name, secret.Namespace)
+
+			currentSecret.Data["data-4"] = []byte("value-4\n")
+			currentSecret, err = f.ClientSet.CoreV1().Secrets(f.Namespace.Name).Update(ctx, currentSecret, metav1.UpdateOptions{})
+
+			return err
+		})
 		framework.ExpectNoError(err, "Failed to update secret %q in namespace %q", secret.Name, secret.Namespace)
 
 		// Mark secret as immutable.
